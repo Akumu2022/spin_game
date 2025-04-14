@@ -131,14 +131,6 @@ class GameApp:
         self.totals_label.config(
             text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
         )
-        self.start_cycle()
-
-    def start_cycle(self):
-        self.current_round = 0
-        self.status_label.config(text=f"Cycle {self.cycle_number} - Select numbers...")
-        winner = random.choice(self.players)
-        winner.is_cycle_winner = True
-        self.results_text.config(state="normal")
         self.results_text.insert(
             "end", f"\nCycle {self.cycle_number} (Round {self.cycle_number})\n"
         )
