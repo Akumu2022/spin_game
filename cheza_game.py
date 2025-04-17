@@ -2,8 +2,10 @@ import tkinter as tk
 from tkinter import messagebox
 import random
 import math
+import winsound
 
-MINIMUM_STAKE = 100
+MINIMUM_STAKE = 100  # KSH
+MAXIMUM_STAKE = 999  # KSH
 ROUNDS_PER_CYCLE = 1
 
 class Player:
@@ -15,9 +17,10 @@ class Player:
         self.wins = 0
         self.is_cycle_winner = False
         self.chosen_number = None
+        self.spin_history = []  # Track wins (True) and losses (False)
 
     def __str__(self):
-        return f"{self.name} - Stake: ${self.stake:.2f}, Payout: ${self.payout:.2f}, Wins: {self.wins}"
+        return f"{self.name} - Stake: KSH {self.stake:.2f}, Payout: KSH {self.payout:.2f}, Wins: {self.wins}"
 
 class GameApp:
     def __init__(self, root):
@@ -26,13 +29,14 @@ class GameApp:
         self.house_balance = 10000
         self.house_profits = 0
         self.cycle_number = 1
+        self.tracked_player = None
 
         self.main_frame = tk.Frame(root)
         self.main_frame.pack(padx=10, pady=10)
 
         self.totals_label = tk.Label(
             self.main_frame,
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}",
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}",
             font=("Arial", 12, "bold"),
         )
         self.totals_label.pack(pady=5)
@@ -40,29 +44,32 @@ class GameApp:
         self.setup_frame = tk.Frame(self.main_frame, borderwidth=2, relief="groove")
         self.setup_frame.pack(padx=10, pady=10)
         tk.Label(
-            self.setup_frame, text="Enter Player Details", font=("Arial", 14, "bold")
-        ).grid(row=0, column=0, columnspan=4, pady=10)
+            self.setup_frame, text="Enter Number of Players", font=("Arial", 14, "bold")
+        ).grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(
+            self.setup_frame, text="Number of Players:", font=("Arial", 12)
+        ).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.num_players_entry = tk.Entry(self.setup_frame, width=10, font=("Arial", 12))
+        self.num_players_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        self.set_players_button = tk.Button(
+            self.setup_frame,
+            text="Set Players",
+            font=("Arial", 12),
+            command=self.set_player_entries,
+        )
+        self.set_players_button.grid(row=2, column=0, columnspan=2, pady=10)
 
         self.player_entries = []
-        for i in range(4):
-            tk.Label(
-                self.setup_frame, text=f"Player {i+1} Name:", font=("Arial", 12)
-            ).grid(row=i + 1, column=0, padx=5, pady=5, sticky="e")
-            name_entry = tk.Entry(self.setup_frame, width=15, font=("Arial", 12))
-            name_entry.grid(row=i + 1, column=1, padx=5, pady=5)
-            tk.Label(self.setup_frame, text="Stake ($):", font=("Arial", 12)).grid(
-                row=i + 1, column=2, padx=5, pady=5, sticky="e"
-            )
-            stake_entry = tk.Entry(self.setup_frame, width=10, font=("Arial", 12))
-            stake_entry.grid(row=i + 1, column=3, padx=5, pady=5)
-            self.player_entries.append((name_entry, stake_entry))
+        self.player_entries_frame = tk.Frame(self.setup_frame)
 
-        tk.Button(
+        self.start_button = tk.Button(
             self.setup_frame,
             text="Start Game",
             font=("Arial", 12),
             command=self.start_game,
-        ).grid(row=5, column=0, columnspan=4, pady=10)
+        )
 
         self.game_frame = tk.Frame(self.main_frame)
         self.canvas = tk.Canvas(self.game_frame, width=300, height=300, bg="grey")
@@ -104,6 +111,41 @@ class GameApp:
 
         self.available_numbers = []
 
+    def set_player_entries(self):
+        try:
+            num_players = int(self.num_players_entry.get().strip())
+            if num_players < 1:
+                messagebox.showerror("Error", "Number of players must be at least 1.")
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid number of players.")
+            return
+
+        for widget in self.player_entries_frame.winfo_children():
+            widget.destroy()
+        self.player_entries = []
+
+        tk.Label(
+            self.player_entries_frame, text="Enter Player Details", font=("Arial", 14, "bold")
+        ).grid(row=0, column=0, columnspan=4, pady=10)
+        for i in range(num_players):
+            tk.Label(
+                self.player_entries_frame, text=f"Player {i+1} Name:", font=("Arial", 12)
+            ).grid(row=i+1, column=0, padx=5, pady=5, sticky="e")
+            name_entry = tk.Entry(self.player_entries_frame, width=15, font=("Arial", 12))
+            name_entry.grid(row=i+1, column=1, padx=5, pady=5)
+            tk.Label(self.player_entries_frame, text="Stake (KSH):", font=("Arial", 12)).grid(
+                row=i+1, column=2, padx=5, pady=5, sticky="e"
+            )
+            stake_entry = tk.Entry(self.player_entries_frame, width=10, font=("Arial", 12))
+            stake_entry.grid(row=i+1, column=3, padx=5, pady=5)
+            self.player_entries.append((name_entry, stake_entry))
+
+        self.player_entries_frame.grid(row=3, column=0, columnspan=2)
+        self.start_button.grid(row=4, column=0, columnspan=2, pady=10)
+        self.set_players_button.config(state="disabled")
+        self.num_players_entry.config(state="disabled")
+
     def start_game(self):
         self.players = []
         for name_entry, stake_entry in self.player_entries:
@@ -118,19 +160,43 @@ class GameApp:
                 stake = float(stake_text)
                 if stake < MINIMUM_STAKE:
                     messagebox.showerror(
-                        "Error", f"Stake must be at least ${MINIMUM_STAKE}."
+                        "Error", f"Stake must be at least KSH {MINIMUM_STAKE}."
+                    )
+                    return
+                if stake > MAXIMUM_STAKE:
+                    messagebox.showerror(
+                        "Error", f"Stake cannot exceed KSH {MAXIMUM_STAKE}."
                     )
                     return
             except ValueError:
                 messagebox.showerror("Error", "Invalid stake amount.")
                 return
-            self.players.append(Player(name, stake))
-
+            player = Player(name, stake)
+            self.players.append(player)
+        if self.players:
+            self.tracked_player = self.players[0]
+            self.tracked_player.spin_history = getattr(self, 'tracked_history', [])
         self.setup_frame.pack_forget()
         self.game_frame.pack()
         self.totals_label.config(
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}"
         )
+        self.start_cycle()
+
+    def start_cycle(self):
+        self.current_round = 0
+        self.status_label.config(text=f"Cycle {self.cycle_number} - Select numbers...")
+        if self.players:
+            if len(self.players) == 1:
+                # Single player: win on first spin, lose thereafter
+                player = self.players[0]
+                player.is_cycle_winner = not player.spin_history  # True if first spin
+            else:
+                # Multi-player: ensure a winner by picking a random player
+                winner = random.choice(self.players)
+                for p in self.players:
+                    p.is_cycle_winner = (p == winner)
+        self.results_text.config(state="normal")
         self.results_text.insert(
             "end", f"\nCycle {self.cycle_number} (Round {self.cycle_number})\n"
         )
@@ -138,7 +204,7 @@ class GameApp:
         self.current_player_index = 0
         self.update_wheel_numbers()
         self.totals_label.config(
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}"
         )
         self.play_round()
 
@@ -164,7 +230,7 @@ class GameApp:
         self.number_var.set("")
         menu = self.number_menu["menu"]
         menu.delete(0, "end")
-        for num in sorted(self.available_numbers):  # Sort for consistency
+        for num in sorted(self.available_numbers):
             menu.add_command(
                 label=num, command=lambda value=num: self.number_var.set(value)
             )
@@ -174,12 +240,19 @@ class GameApp:
     def update_wheel_numbers(self):
         if not hasattr(self, "wheel_numbers"):
             numbers = [13]
-            winner = next(p for p in self.players if p.is_cycle_winner)
+            try:
+                winner = next(p for p in self.players if p.is_cycle_winner)
+            except StopIteration:
+                if self.players:
+                    winner = random.choice(self.players)
+                    winner.is_cycle_winner = True
+                else:
+                    return
             winner_number = random.randint(1, 50)
             while winner_number in numbers:
                 winner_number = random.randint(1, 50)
             numbers.append(winner_number)
-            winner.chosen_number = winner_number 
+            winner.chosen_number = winner_number
             remaining_slots = self.num_segments - len(numbers)
             random_numbers = random.sample(
                 [n for n in range(1, 51) if n not in numbers], remaining_slots
@@ -222,11 +295,10 @@ class GameApp:
                 font=("Arial", 12, font_style),
                 fill="white",
             )
-        # Arrow at the bottom, pointing upward toward the wheel
         self.canvas.create_polygon(
-            self.center_x - 10, self.center_y + self.radius + 10,  
-            self.center_x + 10, self.center_y + self.radius + 10,  
-            self.center_x, self.center_y + self.radius,             
+            self.center_x - 10, self.center_y + self.radius + 10,
+            self.center_x + 10, self.center_y + self.radius + 10,
+            self.center_x, self.center_y + self.radius,
             fill="black",
         )
 
@@ -254,8 +326,15 @@ class GameApp:
                 return
 
         self.spin_button.config(text="Spin Wheel")
-        winner = next(p for p in self.players if p.is_cycle_winner)
-        self.winning_number = winner.chosen_number
+        if len(self.players) == 1 and self.players[0].spin_history:
+            # Single player, after first spin: ensure they lose by picking a random number not equal to their choice
+            player = self.players[0]
+            available_numbers = [n for n in self.wheel_numbers if n != player.chosen_number]
+            self.winning_number = random.choice(available_numbers)  # Randomly pick from available numbers
+        else:
+            # Single player first spin or multi-player: use winner's number
+            winner = next(p for p in self.players if p.is_cycle_winner)
+            self.winning_number = winner.chosen_number
         self.rotation_angle = 0
         self.update_count = 0
         self.animate_wheel()
@@ -265,49 +344,51 @@ class GameApp:
         self.draw_wheel(self.rotation_angle)
         self.rotation_angle = (self.rotation_angle + 10) % 360
         self.update_count += 1
-        
-        # Dynamic speed for more realistic animation
+
+        if self.update_count % 10 == 0:
+            winsound.PlaySound("spin.wav", winsound.SND_ASYNC)
+
         if self.update_count < 20:
-            speed = 20  # Start fast
+            speed = 20
         elif self.update_count < 100:
-            speed = 30  # Slow down a bit
+            speed = 30
         elif self.update_count < 150:
-            speed = 50  # Even slower
+            speed = 50
         else:
-            speed = 80  # Very slow at the end
-            
+            speed = 80
+
         if self.update_count < 250:
             self.root.after(speed, self.animate_wheel)
         else:
-            # Find the winning number's position on the wheel
             winning_index = self.wheel_numbers.index(self.winning_number)
-                
             segment_angle = self.angle_per_segment
             segment_center = winning_index * segment_angle + (segment_angle / 2)
             final_angle = (90 - segment_center + 180) % 360
             self.canvas.delete("all")
             self.draw_wheel(final_angle)
-            
+
             self.results_text.config(state="normal")
             self.results_text.insert("end", f"Winning number: {self.winning_number}\n")
             winners = [p for p in self.players if p.chosen_number == self.winning_number]
             for p in winners:
                 self.results_text.insert("end", f"{p.name}: 🎉 You WON!\n")
+                p.spin_history.append(True)
             for p in self.players:
                 if p not in winners:
                     self.results_text.insert("end", f"{p.name}: No win.\n")
+                    p.spin_history.append(False)
             self.results_text.config(state="disabled")
             self.spin_button.config(state="disabled")
             self.totals_label.config(
-                text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
+                text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}"
             )
-            self.root.after(1000, self.end_cycle)  # Delay slightly to let users see result
+            self.root.after(1000, self.end_cycle)
 
     def end_cycle(self):
         total_stake_pool = sum(p.stake for p in self.players)
         cycle_winner = next(p for p in self.players if p.is_cycle_winner)
-        winners = [p for p in self.players if p.chosen_number == cycle_winner.chosen_number]
-        sum_winner_stakes = sum(p.stake for p in winners)
+        winners = [p for p in self.players if p.chosen_number == self.winning_number]
+        sum_winner_stakes = sum(p.stake for p in winners) if winners else 1
         total_winner_payout = sum_winner_stakes + 0.2 * total_stake_pool
         winner_outputs = []
         for p in winners:
@@ -340,14 +421,14 @@ class GameApp:
         self.results_text.config(state="normal")
         self.results_text.insert("end", "\n===== PAYOUTS =====\n")
         for name, payout in winner_outputs:
-            self.results_text.insert("end", f"{name}: ${payout:.2f}\n")
+            self.results_text.insert("end", f"{name}: KSH {payout:.2f}\n")
         if bonus_player:
             self.results_text.insert(
-                "end", f"{bonus_player.name}: ${bonus:.2f} (Bonus)\n")
-        self.results_text.insert("end", f"House Pool: ${house_pool:.2f}\n")
+                "end", f"{bonus_player.name}: KSH {bonus:.2f} (Bonus)\n")
+        self.results_text.insert("end", f"House Pool: KSH {house_pool:.2f}\n")
         self.results_text.insert(
             "end",
-            f"House Totals: ${self.house_profits + self.house_balance:.2f}\n",
+            f"House Totals: KSH {self.house_profits + self.house_balance:.2f}\n",
         )
         self.results_text.config(state="disabled")
 
@@ -360,17 +441,17 @@ class GameApp:
             tk.Label(self.results_frame, text=str(p), font=("Arial", 12)).pack()
         tk.Label(
             self.results_frame,
-            text=f"Total House Profits: ${self.house_profits:.2f}",
+            text=f"Total House Profits: KSH {self.house_profits:.2f}",
             font=("Arial", 12),
         ).pack(pady=5)
         tk.Label(
             self.results_frame,
-            text=f"House Balance: ${self.house_balance:.2f}",
+            text=f"House Balance: KSH {self.house_balance:.2f}",
             font=("Arial", 12),
         ).pack(pady=5)
         tk.Label(
             self.results_frame,
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}",
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}",
             font=("Arial", 12),
         ).pack(pady=5)
         tk.Button(
@@ -384,13 +465,14 @@ class GameApp:
         ).pack(side="left", padx=5, pady=10)
 
         self.totals_label.config(
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}"
         )
 
     def reset_game(self):
         self.results_text.config(state="normal")
         self.results_text.delete(1.0, "end")
         self.results_text.config(state="disabled")
+        old_tracked_history = self.tracked_player.spin_history if self.tracked_player else []
         self.players = []
         self.cycle_number += 1
         self.results_frame.destroy()
@@ -400,11 +482,21 @@ class GameApp:
         self.setup_frame.pack()
         self.game_frame.pack_forget()
         self.totals_label.config(
-            text=f"House Totals: ${self.house_profits + self.house_balance:.2f}"
+            text=f"House Totals: KSH {self.house_profits + self.house_balance:.2f}"
         )
         self.available_numbers = []
         if hasattr(self, "wheel_numbers"):
             delattr(self, "wheel_numbers")
+        for widget in self.player_entries_frame.winfo_children():
+            widget.destroy()
+        self.player_entries = []
+        self.player_entries_frame.grid_forget()
+        self.start_button.grid_forget()
+        self.set_players_button.config(state="normal")
+        self.num_players_entry.config(state="normal")
+        self.num_players_entry.delete(0, "end")
+        self.tracked_player = None
+        self.tracked_history = old_tracked_history
 
 if __name__ == "__main__":
     root = tk.Tk()
